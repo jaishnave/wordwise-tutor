@@ -1,0 +1,690 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Wordwise Voice Tutor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Layout: one narrow column. Header with progress, a single prompt card, a mic orb, then a running transcript. */
+:root {
+  --bg: #eff3f5;
+  --surface: #ffffff;
+  --fg: #0f1f29;
+  --muted: #52646f;
+  --line: #cbd6dc;
+  --accent: #0a6c86;
+  --accent-fg: #ffffff;
+  --good: #12795a;
+  --bad: #b4402f;
+  --glow: rgba(10, 108, 134, 0.28);
+  --display: "Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c151b;
+    --surface: #14212a;
+    --fg: #e7eef2;
+    --muted: #93a6b1;
+    --line: #2a3b46;
+    --accent: #4fc0dc;
+    --accent-fg: #06222b;
+    --good: #4fd1a5;
+    --bad: #ff8a78;
+    --glow: rgba(79, 192, 220, 0.3);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c151b;
+  --surface: #14212a;
+  --fg: #e7eef2;
+  --muted: #93a6b1;
+  --line: #2a3b46;
+  --accent: #4fc0dc;
+  --accent-fg: #06222b;
+  --good: #4fd1a5;
+  --bad: #ff8a78;
+  --glow: rgba(79, 192, 220, 0.3);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 var(--body);
+  padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.shell { max-width: 600px; margin: 0 auto; display: grid; gap: 18px; }
+.shell > * { min-width: 0; }
+
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { font: 700 24px/1 var(--display); letter-spacing: -0.01em; }
+.brand small { font: 400 11px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-left: 8px; }
+.tools { display: flex; gap: 6px; }
+
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.chip {
+  background: transparent; border: 1px solid var(--line); border-radius: 6px;
+  padding: 4px 10px; font: 500 13px/1.4 var(--body); color: var(--muted);
+}
+.chip[aria-pressed="true"] { color: var(--fg); border-color: var(--accent); }
+
+.btn {
+  background: var(--accent); color: var(--accent-fg); border: 0; border-radius: 6px;
+  padding: 12px 20px; font: 600 16px/1.2 var(--body);
+}
+.btn.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); padding: 9px 14px; font-size: 15px; font-weight: 500; }
+.btn.ghost:hover { border-color: var(--accent); }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 20px; }
+.label { font: 400 11px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+
+/* intro */
+.intro h1 { font: 700 clamp(26px, 6vw, 34px)/1.15 var(--display); letter-spacing: -0.015em; margin: 10px 0 12px; text-wrap: balance; }
+.intro p { margin: 0 0 14px; max-width: 60ch; color: var(--muted); }
+.sample { display: grid; gap: 8px; margin: 18px 0; padding: 14px; border: 1px dashed var(--line); border-radius: 8px; }
+.sample .label { margin-bottom: 2px; }
+.status { font: 400 12px/1.5 var(--mono); color: var(--muted); margin-top: 14px; }
+
+/* transcript bubbles */
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.line { max-width: 88%; padding: 8px 12px; border-radius: 8px; font-size: 15px; border: 1px solid var(--line); background: var(--surface); }
+.line.you { justify-self: end; background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.line .who { display: block; font: 400 10px/1.2 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.7; margin-bottom: 2px; }
+#log { max-height: 240px; overflow-y: auto; padding: 2px; }
+
+/* HUD */
+.hud { display: grid; gap: 8px; }
+.hud-row { display: flex; justify-content: space-between; gap: 12px; font: 400 13px/1 var(--mono); color: var(--muted); }
+.hud-row b { color: var(--fg); font-weight: 400; }
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.4s ease; }
+
+/* prompt card */
+.sentence { font: 500 clamp(21px, 5vw, 26px)/1.4 var(--display); margin: 12px 0 10px; text-wrap: balance; }
+.blank { display: inline-block; min-width: 5ch; padding: 0 6px; text-align: center; border-bottom: 3px solid var(--accent); color: var(--accent); }
+.blank.right { color: var(--good); border-color: var(--good); }
+.blank.miss { color: var(--bad); border-color: var(--bad); }
+.meaning { color: var(--muted); margin: 0; }
+.meaning b { color: var(--fg); font-weight: 600; }
+.hintline { margin: 10px 0 0; font: 400 14px/1.4 var(--mono); color: var(--accent); min-height: 1.4em; }
+.resp { margin: 10px 0 0; font: 400 14px/1.4 var(--mono); color: var(--muted); }
+
+/* mic orb */
+.voice { display: grid; justify-items: center; gap: 10px; padding-block: 4px; }
+.orb {
+  position: relative; width: 84px; height: 84px; border-radius: 50%; border: 0;
+  background: var(--accent); color: var(--accent-fg); display: grid; place-items: center;
+}
+.orb svg { width: 34px; height: 34px; }
+.orb .bars { display: none; gap: 4px; align-items: center; height: 34px; }
+.orb .bars i { width: 5px; height: 12px; border-radius: 3px; background: var(--accent-fg); }
+[data-state="speaking"] .orb svg { display: none; }
+[data-state="speaking"] .orb .bars { display: flex; }
+[data-state="speaking"] .orb .bars i { animation: talk 0.9s ease-in-out infinite; }
+[data-state="speaking"] .orb .bars i:nth-child(2) { animation-delay: 0.15s; }
+[data-state="speaking"] .orb .bars i:nth-child(3) { animation-delay: 0.3s; }
+[data-state="speaking"] .orb .bars i:nth-child(4) { animation-delay: 0.45s; }
+[data-state="listening"] .orb { animation: ring 1.6s ease-out infinite; }
+[data-state="thinking"] .orb { opacity: 0.6; }
+@keyframes talk { 0%, 100% { height: 10px; } 50% { height: 32px; } }
+@keyframes ring { 0% { box-shadow: 0 0 0 0 var(--glow); } 100% { box-shadow: 0 0 0 26px rgba(0, 0, 0, 0); } }
+@media (prefers-reduced-motion: reduce) {
+  [data-state] .orb, [data-state] .orb .bars i { animation: none !important; }
+  .bar i { transition: none; }
+}
+.state { font: 500 15px/1.3 var(--body); min-height: 1.3em; text-align: center; }
+.live { font-style: italic; color: var(--muted); min-height: 1.4em; text-align: center; margin: 0; }
+.note { margin: 0; text-align: center; font-size: 14px; color: var(--bad); min-height: 1.4em; }
+
+/* typed answer */
+.answer { display: flex; gap: 8px; }
+.answer input {
+  flex: 1; min-width: 0; font: inherit; padding: 11px 12px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+}
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* done */
+.score { font: 700 clamp(52px, 14vw, 72px)/1 var(--display); letter-spacing: -0.02em; margin: 8px 0; }
+.score span { color: var(--muted); font-weight: 500; }
+.review { list-style: none; margin: 12px 0 18px; padding: 0; display: grid; gap: 8px; }
+.review li { padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; }
+.review b { font-family: var(--display); font-size: 18px; }
+.review span { display: block; color: var(--muted); font-size: 14px; }
+</style>
+
+<main class="shell" id="app" data-state="idle">
+  <header>
+    <div class="brand">Wordwise<small>voice tutor</small></div>
+    <div class="tools" id="tools" hidden>
+      <button class="chip" id="voiceToggle" type="button" aria-pressed="true">Voice on</button>
+      <button class="chip" id="slowToggle" type="button" aria-pressed="false">Slow speech</button>
+    </div>
+  </header>
+
+  <section class="panel intro" id="intro">
+    <div class="label">8 words · about 5 minutes</div>
+    <h1>Hear the sentence. Say the missing word.</h1>
+    <p>Lexi, your vocabulary coach, reads out a meaning and a sentence with a gap. You say the word that fits. Lexi tells you if you got it, gives hints when you ask, and brings back the words you missed.</p>
+    <div class="sample" aria-label="Example conversation">
+      <div class="label">Example</div>
+      <div class="line"><span class="who">Lexi</span>Present or found everywhere. Complete the sentence: Smartphones are now blank. You see them in every city and village.</div>
+      <div class="line you"><span class="who">You</span>Ubiquitous</div>
+      <div class="line"><span class="who">Lexi</span>Spot on. Ubiquitous.</div>
+    </div>
+    <button class="btn" id="startBtn" type="button">Start session</button>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section id="session" hidden>
+    <div class="hud">
+      <div class="hud-row"><span id="progressText">Word 1 of 8</span><span>Score <b id="scoreText">0</b></span></div>
+      <div class="bar" aria-hidden="true"><i id="barFill"></i></div>
+    </div>
+
+    <div class="panel" style="margin-top:18px">
+      <div class="label" id="cardLabel">Fill the blank</div>
+      <p class="sentence" id="sentence"></p>
+      <p class="meaning" id="meaning"></p>
+      <p class="hintline" id="hintline" aria-live="polite"></p>
+      <p class="resp" id="resp" hidden></p>
+    </div>
+
+    <div class="voice" style="margin-top:18px">
+      <button class="orb" id="micBtn" type="button" aria-label="Microphone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      </button>
+      <div class="state" id="stateLabel" aria-live="polite"></div>
+      <p class="live" id="live"></p>
+      <p class="note" id="note" aria-live="polite"></p>
+    </div>
+
+    <form class="answer" id="answerForm" style="margin-top:6px" autocomplete="off">
+      <input id="answerInput" type="text" placeholder="Or type your answer" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type your answer">
+      <button class="btn" type="submit">Send</button>
+    </form>
+
+    <div class="actions" style="margin-top:12px">
+      <button class="btn ghost" id="hintBtn" type="button">Hint</button>
+      <button class="btn ghost" id="repeatBtn" type="button">Repeat</button>
+      <button class="btn ghost" id="skipBtn" type="button">Skip</button>
+    </div>
+
+    <div class="label" style="margin:22px 0 8px">Conversation</div>
+    <ol class="log" id="log"></ol>
+  </section>
+
+  <section class="panel" id="done" hidden>
+    <div class="label">Session complete</div>
+    <div class="score" id="finalScore"></div>
+    <p id="finalMsg" style="margin:0 0 6px"></p>
+    <ul class="review" id="review"></ul>
+    <button class="btn" id="againBtn" type="button">Practice again</button>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var WORDS = [
+    { w: "ubiquitous", resp: "yoo-BIK-wih-tus", pos: "adjective", meaning: "present or found everywhere", s: "Smartphones are now ___. You see them in every city and every village." },
+    { w: "meticulous", resp: "meh-TIK-yuh-lus", pos: "adjective", meaning: "very careful about small details", s: "She was ___ about checking every number before sending the report." },
+    { w: "reluctant", resp: "rih-LUK-tunt", pos: "adjective", meaning: "unwilling and hesitant to do something", s: "He felt ___ to speak up in front of the whole team." },
+    { w: "resilient", resp: "rih-ZIL-yunt", pos: "adjective", meaning: "able to recover quickly after a difficulty", s: "Small shops proved ___ and reopened within days of the flood." },
+    { w: "candid", resp: "KAN-did", pos: "adjective", meaning: "honest and direct, even when it is uncomfortable", s: "I appreciate your ___ feedback on my presentation." },
+    { w: "ambiguous", resp: "am-BIG-yoo-us", pos: "adjective", meaning: "open to more than one meaning", s: "The instructions were ___, so everyone understood them differently." },
+    { w: "pragmatic", resp: "prag-MAT-ik", pos: "adjective", meaning: "practical, focused on what works rather than ideals", s: "We took a ___ approach and fixed the biggest problem first." },
+    { w: "diligent", resp: "DIL-ih-jent", pos: "adjective", meaning: "hardworking and careful in your effort", s: "A ___ student, she revised her notes every single evening." },
+    { w: "inevitable", resp: "in-EV-ih-tuh-bul", pos: "adjective", meaning: "certain to happen and impossible to avoid", s: "With prices rising, a change in the budget was ___." },
+    { w: "elaborate", resp: "ih-LAB-uh-rit", pos: "adjective", meaning: "very detailed and complicated", s: "They made an ___ plan with dozens of steps for the launch." }
+  ];
+  var TOTAL = 8;
+
+  function $(id) { return document.getElementById(id); }
+  var app = $("app");
+
+  /* ---------- state ---------- */
+  var queue = [], cur = null, score = 0, doneCount = 0, tries = 0, helped = false, hintLvl = 0;
+  var missed = [], turn = 0, state = "idle", active = false;
+
+  /* ---------- speech out ---------- */
+  var synth = ("speechSynthesis" in window) ? window.speechSynthesis : null;
+  var voiceOn = true, slow = false, voice = null;
+  function pickVoice() {
+    if (!synth) return;
+    var vs = synth.getVoices();
+    if (!vs || !vs.length) return;
+    voice = vs.filter(function (v) { return /^en[-_]IN/i.test(v.lang); })[0] ||
+            vs.filter(function (v) { return /^en[-_]GB/i.test(v.lang); })[0] ||
+            vs.filter(function (v) { return /^en[-_]US/i.test(v.lang); })[0] ||
+            vs.filter(function (v) { return /^en/i.test(v.lang); })[0] || null;
+  }
+  if (synth) {
+    pickVoice();
+    try { synth.addEventListener("voiceschanged", pickVoice); } catch (e) { synth.onvoiceschanged = pickVoice; }
+  }
+  function speak(text) {
+    return new Promise(function (resolve) {
+      if (!synth || !voiceOn) { resolve(); return; }
+      var finished = false, timer;
+      function fin() { if (!finished) { finished = true; clearTimeout(timer); resolve(); } }
+      try {
+        var u = new SpeechSynthesisUtterance(text);
+        if (voice) { u.voice = voice; u.lang = voice.lang; } else { u.lang = "en-US"; }
+        u.rate = slow ? 0.78 : 0.95;
+        u.onend = fin; u.onerror = fin;
+        timer = setTimeout(fin, 4000 + text.length * 90);
+        synth.speak(u);
+      } catch (e) { fin(); }
+    });
+  }
+
+  /* ---------- speech in ---------- */
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  var micOK = !!SR, rec = null;
+
+  // Request microphone permission when the user starts a session.
+  // Microphone access requires HTTPS (or localhost) in modern browsers.
+  async function requestMicAccess() {
+    if (!SR || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+    try {
+      var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(function (track) { track.stop(); });
+      micOK = true;
+      return true;
+    } catch (e) {
+      micOK = false;
+      note("Microphone permission was not granted. You can still type your answer.");
+      return false;
+    }
+  }
+
+  function stopListening() {
+    if (rec) {
+      try { rec.onend = null; rec.onerror = null; rec.onresult = null; rec.abort(); } catch (e) {}
+      rec = null;
+    }
+  }
+
+  /* ---------- UI helpers ---------- */
+  var LABELS = {
+    idle: "Ready",
+    speaking: "Lexi is speaking. Tap to skip ahead.",
+    listening: "Listening. Say your answer.",
+    ready: "Your turn. Tap the mic or type.",
+    thinking: "Checking…"
+  };
+  function setState(s) {
+    state = s;
+    app.setAttribute("data-state", s);
+    $("stateLabel").textContent = LABELS[s] || "";
+    if (s !== "listening") $("live").textContent = "";
+  }
+  function note(msg) { $("note").textContent = msg || ""; }
+  function addLine(who, text) {
+    var li = document.createElement("li");
+    li.className = "line " + who;
+    var tag = document.createElement("span");
+    tag.className = "who";
+    tag.textContent = who === "you" ? "You" : "Lexi";
+    li.appendChild(tag);
+    li.appendChild(document.createTextNode(text));
+    var log = $("log");
+    log.appendChild(li);
+    log.scrollTop = log.scrollHeight;
+  }
+  function updateHud() {
+    var n = Math.min(doneCount + 1, TOTAL);
+    $("progressText").textContent = (cur && cur.retry) ? "Revisiting a missed word" : "Word " + n + " of " + TOTAL;
+    $("scoreText").textContent = score + " / " + TOTAL;
+    $("barFill").style.width = Math.round(doneCount / TOTAL * 100) + "%";
+  }
+  function fullSentence() { return cur.s.replace("___", cur.w); }
+  function renderCard(result) {
+    var parts = cur.s.split("___");
+    var p = $("sentence");
+    p.textContent = "";
+    p.appendChild(document.createTextNode(parts[0]));
+    var b = document.createElement("span");
+    b.className = "blank" + (result === "right" ? " right" : result === "miss" ? " miss" : "");
+    b.textContent = result ? cur.w : "?";
+    p.appendChild(b);
+    p.appendChild(document.createTextNode(parts[1] || ""));
+    var m = $("meaning");
+    m.textContent = "";
+    var bold = document.createElement("b");
+    bold.textContent = "Meaning: ";
+    m.appendChild(bold);
+    m.appendChild(document.createTextNode(cur.meaning + " (" + cur.pos + ")"));
+    $("cardLabel").textContent = cur.retry ? "Second try" : "Fill the blank";
+    var r = $("resp");
+    if (result) { r.hidden = false; r.textContent = "Say it: " + cur.resp; } else { r.hidden = true; r.textContent = ""; }
+    renderHint();
+    updateHud();
+  }
+  function hintText() {
+    if (hintLvl <= 0) return "";
+    if (hintLvl === 1) return "Starts with " + cur.w.charAt(0).toUpperCase() + " and has " + cur.w.length + " letters.";
+    return "Starts with " + cur.w.slice(0, 3).toUpperCase() + "… (" + cur.w.length + " letters).";
+  }
+  function renderHint() { $("hintline").textContent = hintText(); }
+
+  function rand(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function shuffle(a) {
+    a = a.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
+  /* ---------- answer matching ---------- */
+  function normalize(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z\s'-]/g, " ").replace(/\s+/g, " ").trim();
+  }
+  function lev(a, b) {
+    var m = a.length, n = b.length, i, j, prev, row = [];
+    for (j = 0; j <= n; j++) row[j] = j;
+    for (i = 1; i <= m; i++) {
+      prev = row[0]; row[0] = i;
+      for (j = 1; j <= n; j++) {
+        var tmp = row[j];
+        row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1));
+        prev = tmp;
+      }
+    }
+    return row[n];
+  }
+  function isMatch(alts, word) {
+    var tol = word.length >= 9 ? 2 : 1;
+    for (var k = 0; k < alts.length; k++) {
+      var norm = normalize(alts[k]);
+      if (!norm) continue;
+      var toks = norm.split(" ");
+      for (var i = 0; i < toks.length; i++) {
+        var tk = toks[i];
+        if (tk === word) return true;
+        if (tk.length >= 4 && lev(tk, word) <= tol) return true;
+      }
+      var joined = toks.join("");
+      if (Math.abs(joined.length - word.length) <= 2 && lev(joined, word) <= tol) return true;
+    }
+    return false;
+  }
+
+  /* ---------- flow control ---------- */
+  function begin() {
+    turn++;
+    stopListening();
+    if (synth) { try { synth.cancel(); } catch (e) {} }
+    return turn;
+  }
+  async function say(display, spoken, t) {
+    addLine("agent", display);
+    setState("speaking");
+    await speak(spoken || display);
+    return t === turn;
+  }
+  function listen(t) {
+    if (t !== turn) return;
+    if (!SR || !micOK) {
+      setState("ready");
+      note(SR ? "The microphone is blocked in this view. Type your answer below." : "This browser has no voice input. Type your answer below, or open the link in Chrome or Edge.");
+      return;
+    }
+    stopListening();
+    var r;
+    try { r = new SR(); } catch (e) { micOK = false; setState("ready"); note("Voice input could not start. Type your answer below."); return; }
+    rec = r;
+    r.lang = "en-IN";
+    r.interimResults = true;
+    r.maxAlternatives = 3;
+    r.continuous = false;
+    var final = false;
+    r.onstart = function () { if (t === turn) { setState("listening"); note(""); } };
+    r.onresult = function (e) {
+      if (t !== turn) return;
+      var res = e.results[e.results.length - 1];
+      $("live").textContent = res[0].transcript;
+      if (res.isFinal) {
+        final = true;
+        var alts = [];
+        for (var i = 0; i < res.length; i++) alts.push(res[i].transcript);
+        rec = null;
+        handleAnswer(alts);
+      }
+    };
+    r.onerror = function (e) {
+      if (t !== turn) return;
+      final = true;
+      if (e.error === "aborted") return;
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        micOK = false;
+        note("The microphone is blocked in this view. Type your answer below.");
+      } else if (e.error === "no-speech") {
+        note("I didn't hear anything. Tap the mic to try again, or type your answer.");
+      } else {
+        note("Voice input had a problem. Tap the mic to retry, or type your answer.");
+      }
+      setState("ready");
+    };
+    r.onend = function () { if (t === turn && !final) setState("ready"); };
+    setState("listening");
+    try { r.start(); } catch (e) { setState("ready"); }
+  }
+
+  /* ---------- session flow ---------- */
+  async function startSession() {
+    // Trigger the browser permission prompt from the user's Start session action.
+    if (SR && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      await requestMicAccess();
+    }
+    var t = begin();
+    active = true;
+    queue = shuffle(WORDS).slice(0, TOTAL).map(function (x) { return Object.assign({}, x, { retry: false }); });
+    score = 0; doneCount = 0; missed = []; cur = null;
+    $("log").textContent = "";
+    $("intro").hidden = true;
+    $("done").hidden = true;
+    $("session").hidden = false;
+    $("tools").hidden = false;
+    note("");
+    $("sentence").textContent = "";
+    $("meaning").textContent = "";
+    $("hintline").textContent = "";
+    $("resp").hidden = true;
+    $("barFill").style.width = "0%";
+    $("scoreText").textContent = "0 / " + TOTAL;
+    $("progressText").textContent = "Word 1 of " + TOTAL;
+    var ok = await say("Hi, I'm Lexi. I'll read a meaning and a sentence with a gap. Say the word that fits. You can also say hint, repeat, or skip.", null, t);
+    if (!ok) return;
+    nextWord();
+  }
+
+  async function nextWord() {
+    var t = begin();
+    if (!queue.length) { finish(t); return; }
+    cur = queue.shift();
+    tries = 0; helped = false; hintLvl = 0;
+    renderCard();
+    var lead = cur.retry ? "Let's revisit one you missed." : "Word " + (doneCount + 1) + " of " + TOTAL + ".";
+    var display = lead + " " + cap(cur.meaning) + ". Complete the sentence: " + cur.s.replace("___", "____");
+    var spoken = lead + " " + cap(cur.meaning) + ". Complete the sentence: " + cur.s.replace("___", "blank");
+    var ok = await say(display, spoken, t);
+    if (!ok) return;
+    listen(t);
+  }
+
+  async function reveal(t, lead) {
+    if (missed.indexOf(cur.w) === -1) missed.push(cur.w);
+    var again = "";
+    if (!cur.retry) {
+      doneCount++;
+      queue.push(Object.assign({}, cur, { retry: true }));
+      again = " We'll try this one again at the end.";
+    }
+    renderCard("miss");
+    var text = lead + " The word is " + cur.w + ". " + fullSentence() + again;
+    return say(text, text, t);
+  }
+
+  async function handleAnswer(alts) {
+    var t = begin();
+    if (!cur) return;
+    var heard = alts.filter(Boolean);
+    if (!heard.length) { listen(t); return; }
+    addLine("you", heard[0]);
+    setState("thinking");
+    var first = normalize(heard[0]);
+
+    if (isMatch(heard, cur.w)) {
+      var pts = (!cur.retry && tries === 0 && !helped) ? 1 : 0;
+      score += pts;
+      if (!cur.retry) doneCount++;
+      renderCard("right");
+      var praise = pts ? rand(["Correct!", "Spot on.", "Yes, exactly."]) : rand(["Got it.", "That's the one."]);
+      var msg = praise + " " + cap(cur.w) + ". " + fullSentence();
+      var ok = await say(msg, msg, t);
+      if (!ok) return;
+      nextWord();
+      return;
+    }
+    if (/\b(repeat|again|pardon|say that)\b/.test(first)) { repeatPrompt(); return; }
+    if (/\b(hint|clue|help)\b/.test(first)) { doHint(); return; }
+    if (/\b(skip|pass|next|give up|no idea|don'?t know)\b/.test(first)) { doSkip(); return; }
+
+    tries++;
+    if (tries >= 2) {
+      var ok2 = await reveal(t, "Not quite.");
+      if (!ok2) return;
+      nextWord();
+      return;
+    }
+    var retryMsg = "Not quite. Try again, or say hint.";
+    var ok3 = await say(retryMsg, retryMsg, t);
+    if (!ok3) return;
+    listen(t);
+  }
+
+  async function doHint() {
+    if (!cur || !active) return;
+    var t = begin();
+    helped = true;
+    hintLvl = Math.min(hintLvl + 1, 2);
+    renderHint();
+    var txt = "Hint. " + hintText();
+    var ok = await say(txt, txt, t);
+    if (!ok) return;
+    listen(t);
+  }
+
+  async function repeatPrompt() {
+    if (!cur || !active) return;
+    var t = begin();
+    var display = cap(cur.meaning) + ". Complete the sentence: " + cur.s.replace("___", "____");
+    var spoken = cap(cur.meaning) + ". Complete the sentence: " + cur.s.replace("___", "blank");
+    var ok = await say(display, spoken, t);
+    if (!ok) return;
+    listen(t);
+  }
+
+  async function doSkip() {
+    if (!cur || !active) return;
+    var t = begin();
+    var ok = await reveal(t, "No problem.");
+    if (!ok) return;
+    nextWord();
+  }
+
+  async function finish(t) {
+    active = false;
+    cur = null;
+    $("session").hidden = true;
+    $("done").hidden = false;
+    $("tools").hidden = false;
+    $("finalScore").textContent = "";
+    $("finalScore").appendChild(document.createTextNode(String(score)));
+    var tot = document.createElement("span");
+    tot.textContent = " / " + TOTAL;
+    $("finalScore").appendChild(tot);
+    var perfect = missed.length === 0;
+    var msg = "That's the session. You scored " + score + " out of " + TOTAL + ". " +
+      (perfect ? "A perfect round." : "Words to review: " + missed.join(", ") + ".");
+    $("finalMsg").textContent = perfect
+      ? "A perfect round. Every word on the first try."
+      : "Score counts first-try answers without hints. Review these before your next session:";
+    var ul = $("review");
+    ul.textContent = "";
+    missed.forEach(function (w) {
+      var item = WORDS.filter(function (x) { return x.w === w; })[0];
+      var li = document.createElement("li");
+      var b = document.createElement("b");
+      b.textContent = item.w;
+      var sp = document.createElement("span");
+      sp.textContent = item.resp + " · " + item.meaning;
+      li.appendChild(b);
+      li.appendChild(sp);
+      ul.appendChild(li);
+    });
+    setState("idle");
+    await speak(msg);
+  }
+
+  /* ---------- wiring ---------- */
+  $("startBtn").addEventListener("click", startSession);
+  $("againBtn").addEventListener("click", startSession);
+  $("hintBtn").addEventListener("click", doHint);
+  $("repeatBtn").addEventListener("click", repeatPrompt);
+  $("skipBtn").addEventListener("click", doSkip);
+
+  $("micBtn").addEventListener("click", function () {
+    if (!active) return;
+    if (state === "speaking") { if (synth) { try { synth.cancel(); } catch (e) {} } return; }
+    if (state === "listening") { stopListening(); setState("ready"); return; }
+    if (state === "thinking") return;
+    if (!SR || !micOK) {
+      note(SR ? "The microphone is blocked in this view. Type your answer below." : "This browser has no voice input. Type your answer below, or open the link in Chrome or Edge.");
+      $("answerInput").focus();
+      return;
+    }
+    listen(turn);
+  });
+
+  $("answerForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var inp = $("answerInput");
+    var v = inp.value.trim();
+    if (!v || !active) return;
+    inp.value = "";
+    handleAnswer([v]);
+  });
+
+  $("voiceToggle").addEventListener("click", function () {
+    voiceOn = !voiceOn;
+    this.setAttribute("aria-pressed", String(voiceOn));
+    this.textContent = voiceOn ? "Voice on" : "Voice off";
+    if (!voiceOn && synth) { try { synth.cancel(); } catch (e) {} }
+  });
+  $("slowToggle").addEventListener("click", function () {
+    slow = !slow;
+    this.setAttribute("aria-pressed", String(slow));
+  });
+
+  var bits = [];
+  bits.push(synth ? "Lexi speaks: available" : "Lexi speaks: not available, replies show as text");
+  bits.push(SR ? "voice input: available (may ask for mic access)" : "voice input: not available here, type instead");
+  $("status").textContent = bits.join(" · ");
+})();
+</script>
+
+</body></html>
